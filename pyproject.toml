@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "bachelor-thesis-research"
+version = "0.1.0"
+description = ""
+authors = ["Moritz Eich <hey@moritz.dev>"]
+readme = "README.md"
+packages = [{include = "bachelor_thesis_research"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+tensorflow-macos = "^2.9.2"
+tensorflow-metal = "^0.5.1"
+numpy = "^1.23.3"
+pandas = "^1.4.4"
+matplotlib = "^3.5.3"
+seaborn = "^0.12.0"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^22.8.0"
+nb-black = "^1.0.7"
+isort = "^5.10.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
