@@ -69,15 +69,8 @@ class SpatialPooler:
         return overlap
 
     def get_winning_columns(self, overlap: np.ndarray) -> np.ndarray:
-        active_columns = np.zeros(self.number_of_columns, dtype=bool)
-        # filter columns lower than threshold
-        active_columns[overlap >= self.stimulus_threshold] = overlap[
-            overlap >= self.stimulus_threshold
-        ]
-
-        # get top number_of_active_columns
-        top_columns = np.argsort(active_columns)[::-1][: self.number_of_active_columns]
-
+        overlap[overlap < self.stimulus_threshold] = 0
+        top_columns = np.argsort(overlap)[::-1][: self.number_of_active_columns]
         return top_columns
 
     def top_columns_to_sdr(self, top_columns: np.ndarray) -> np.ndarray:
@@ -94,7 +87,10 @@ class SpatialPooler:
                 else:
                     self.permanences[column, input_index] -= self.permanence_decrement
 
-                self.permanences = np.clip(self.permanences, 0, 1)
+                if self.permanences[column, input_index] > 1:
+                    self.permanences[column, input_index] = 1
+                elif self.permanences[column, input_index] < 0:
+                    self.permanences[column, input_index] = 0
 
     def update_boost_factors(self):
         pass
@@ -109,7 +105,6 @@ class SpatialPooler:
     def compute(self, input_vector: np.ndarray, learn: bool) -> np.ndarray:
         overlap = self.calculate_overlap(input_vector)
         winning_columns = self.get_winning_columns(overlap)
-
         if learn:
             self.update_permanences(input_vector, winning_columns)
 
