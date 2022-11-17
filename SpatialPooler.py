@@ -40,6 +40,10 @@ class SpatialPooler:
         )
 
         self.boost_factors = np.ones(self.number_of_columns, dtype=float)
+        self.overlap_duty_cycles = np.zeros(self.number_of_columns, dtype=float)
+        self.active_duty_cycle = np.zeros(self.number_of_columns, dtype=float)
+        self.duty_cycle_period = 1000  # TODO find out why init with 1000
+        self.iteration = 0
 
         np.random.seed(seed)
 
@@ -57,15 +61,17 @@ class SpatialPooler:
         self.permanences = np.random.rand(self.number_of_columns, self.number_of_inputs)
 
     def calculate_overlap(self, input_vector: np.ndarray) -> np.ndarray:
-        overlap = np.zeros(self.number_of_columns, dtype=int)
+        overlap = np.zeros(self.number_of_columns, dtype=float)
         input_flattened = input_vector.flatten()
 
         for column in range(self.number_of_columns):
             overlap[column] = np.sum(
                 np.logical_and(
                     input_flattened, self.potential_synapses[column, :]
-                ).astype(int)
+                ).astype(float)
             )
+
+        overlap *= self.boost_factors
         return overlap
 
     def get_winning_columns(self, overlap: np.ndarray) -> np.ndarray:
@@ -92,8 +98,43 @@ class SpatialPooler:
                 elif self.permanences[column, input_index] < 0:
                     self.permanences[column, input_index] = 0
 
+    def calculate_moving_average(
+        self, duty_cycles: np.ndarray, period: int, new_value: np.ndarray
+    ) -> np.ndarray:
+        moving_average = ((period - 1) * duty_cycles + new_value) / (period)
+        return moving_average
+
+    def update_duty_cycles(
+        self, overlap_columns: np.ndarray, active_columns: np.ndarray
+    ):
+
+        overlap = np.zeros(self.number_of_columns, dtype=float)
+        overlap[overlap_columns > 0] = 1
+
+        active = np.zeros(self.number_of_columns, dtype=float)
+        active[active_columns] = 1
+
+        period = self.duty_cycle_period
+        if period > self.iteration:
+            period = self.iteration
+
+        self.overlap_duty_cycles = self.calculate_moving_average(
+            self.overlap_duty_cycles, self.duty_cycle_period, overlap
+        )
+        self.active_duty_cycle = self.calculate_moving_average(
+            self.active_duty_cycle, self.duty_cycle_period, active
+        )
+
+    def exp_boost_function(
+        self, boost_strength: np.ndarray, duty_cycle: np.ndarray, target_density: float
+    ):
+        return np.exp((target_density - duty_cycle) * boost_strength)
+
     def update_boost_factors(self):
-        pass
+        target_density = self.number_of_active_columns / self.number_of_columns
+        self.boost_factors = self.exp_boost_function(
+            self.boost_factors, self.active_duty_cycle, target_density
+        )
 
     def save_state(self, path: str):
         np.savez(
@@ -102,10 +143,22 @@ class SpatialPooler:
             permanences=self.permanences,
         )
 
+    def load_state(self, path: str):
+        state = np.load(path)
+        self.potential_synapses = state["potential_synapses"]
+        self.permanences = state["permanences"]
+
     def compute(self, input_vector: np.ndarray, learn: bool) -> np.ndarray:
+
+        # TODO only apply boosting when learning is on --> why?
         overlap = self.calculate_overlap(input_vector)
         winning_columns = self.get_winning_columns(overlap)
         if learn:
             self.update_permanences(input_vector, winning_columns)
+            self.update_duty_cycles(overlap, winning_columns)
+            # TODO bump weak columns
+            self.update_boost_factors()
+
+        self.iteration += 1
 
         return winning_columns
