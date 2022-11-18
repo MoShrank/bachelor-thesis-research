@@ -25,6 +25,5 @@ def test_get_winning_columns():
     exp_winning_columns = np.array([0, 1, 2, 3, 4, 5, 6])
 
     winning_columns = sp.get_winning_columns(overlap)
-    print("winning columns: ", winning_columns)
 
     np.testing.assert_array_equal(winning_columns, exp_winning_columns)
