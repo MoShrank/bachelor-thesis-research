@@ -8,12 +8,13 @@ class SpatialPooler:
         self,
         input_dimension: Tuple[int],
         column_dimension: Tuple[int],
+        # TODO rename connection sparsity
         connection_sparsity: float,
         permanence_threshold: float,
         stimulus_threshold: float,
         permanence_increment: float,
         permanence_decrement: float,
-        column_sparsity: int,
+        column_sparsity: float,
         seed: int = 42,
     ):
         self.input_dimension = input_dimension
@@ -71,12 +72,16 @@ class SpatialPooler:
                 ).astype(float)
             )
 
-        overlap *= self.boost_factors
         return overlap
 
+    def boost_columns(self, overlap: np.ndarray) -> np.ndarray:
+        boosted_overlap = overlap * self.boost_factors
+        return boosted_overlap
+
     def get_winning_columns(self, overlap: np.ndarray) -> np.ndarray:
-        overlap[overlap < self.stimulus_threshold] = 0
         top_columns = np.argsort(overlap)[::-1][: self.number_of_active_columns]
+        top_columns = top_columns[overlap[top_columns] >= self.stimulus_threshold]
+
         return top_columns
 
     def top_columns_to_sdr(self, top_columns: np.ndarray) -> np.ndarray:
@@ -149,10 +154,27 @@ class SpatialPooler:
         self.permanences = state["permanences"]
 
     def compute(self, input_vector: np.ndarray, learn: bool) -> np.ndarray:
+        """
+        Computes active columns for given input vector
+        and applies boost and updates internal permanences if learning is on
 
-        # TODO only apply boosting when learning is on --> why?
+        :param input_vector: input vector with shape <input_dimension>
+        :param learn: if True, learning is applied
+
+        :return: active columns with shape <number_of_columns>
+        """
+
+        assert (
+            input_vector.shape == self.input_dimension
+        ), f"Input vector has wrong shape. Expected {self.input_dimension}, got {input_vector.shape}"
+
         overlap = self.calculate_overlap(input_vector)
+
+        if learn:
+            overlap = self.boost_columns(overlap)
+
         winning_columns = self.get_winning_columns(overlap)
+
         if learn:
             self.update_permanences(input_vector, winning_columns)
             self.update_duty_cycles(overlap, winning_columns)
