@@ -1,3 +1,4 @@
+import pickle
 from typing import Tuple
 
 import numpy as np
@@ -59,6 +60,7 @@ class SpatialPooler:
             )
             self.potential_synapses[column, random_indices] = True
 
+        # TODO check if this line works
         self.permanences = np.random.rand(self.number_of_columns, self.number_of_inputs)
 
     def calculate_overlap(self, input_vector: np.ndarray) -> np.ndarray:
@@ -142,16 +144,13 @@ class SpatialPooler:
         )
 
     def save_state(self, path: str):
-        np.savez(
-            path,
-            potential_synapses=self.potential_synapses,
-            permanences=self.permanences,
-        )
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
 
     def load_state(self, path: str):
-        state = np.load(path)
-        self.potential_synapses = state["potential_synapses"]
-        self.permanences = state["permanences"]
+        with open(path, "rb") as f:
+            temp = pickle.load(f)
+            self.__dict__.update(temp.__dict__)
 
     def compute(self, input_vector: np.ndarray, learn: bool) -> np.ndarray:
         """
