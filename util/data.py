@@ -1,5 +1,7 @@
 import numpy as np
 
+from SpatialPooler import SpatialPooler
+
 
 def encode_img(x: np.ndarray) -> np.ndarray:
     encoded_x = np.copy(x)
@@ -30,3 +32,24 @@ def sample_class(
     samples = x[sample_indices, :]
 
     return samples
+
+
+def get_sp_sdr_test_set(
+    sp: SpatialPooler, x: np.ndarray, y: np.ndarray, class_value: int, random: bool
+):
+    """
+    get a test set for the spatial pooler consisting of five references and one sample
+    """
+    sdrs = sdrs = np.zeros((sp.number_of_inputs, sp.number_of_columns))
+
+    no_samples = 6
+
+    samples = sample_class(x, y, class_value, no_samples, random)
+    encoded_samples = encode_img(samples)
+
+    for idx, sample in enumerate(encoded_samples):
+        active_columns = sp.compute(sample, learn=False)
+        sdr = sp.top_columns_to_sdr(active_columns)
+        sdrs[idx] = sdr
+
+    return sdrs[:5], sdrs[5]
