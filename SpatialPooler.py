@@ -254,16 +254,16 @@ class SpatialPooler:
 
         overlap = self.calculate_overlap(input_vector)
 
-        # if learn:
-        #    overlap = self.boost_columns(overlap)
+        if learn:
+            overlap = self.boost_columns(overlap)
 
         winning_columns = self.get_winning_columns(overlap)
 
         if learn:
             self.update_permanences(input_vector, winning_columns)
-            # self.update_duty_cycles(overlap, winning_columns)
+            self.update_duty_cycles(overlap, winning_columns)
             # TODO bump weak columns
-            # self.update_boost_factors()
+            self.update_boost_factors()
 
         self.iteration += 1
 
