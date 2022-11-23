@@ -16,14 +16,17 @@ class SpatialPooler:
         permanence_increment: float,
         permanence_decrement: float,
         column_sparsity: float,
+        potential_pool_radius: int,
         seed: int = 42,
     ):
-        self.input_dimension = input_dimension
-        self.column_dimension = column_dimension
+        self.input_dimension = np.array(input_dimension)
+        self.column_dimension = np.array(column_dimension)
         self.number_of_inputs = np.prod(input_dimension)
         self.number_of_columns = np.prod(column_dimension)
 
         self.synapse_connection_size = int(self.number_of_inputs * connection_sparsity)
+        self.connection_sparsity = connection_sparsity
+        self.potential_pool_radius = potential_pool_radius
 
         self.permanence_threshold = permanence_threshold
         self.stimulus_threshold = stimulus_threshold
@@ -55,14 +58,66 @@ class SpatialPooler:
 
         self._initialize()
 
+    def get_potential_pool_center(self, column_idx: int) -> int:
+        """
+        this function returns the index of the center of the potential pool
+        given a column index. It distributes the potential pool evenly over the
+        input space.
+        TODO: find out how this exactly works and find better implementation
+        """
+
+        column_coords = np.array(np.unravel_index(column_idx, self.column_dimension))
+
+        # does this normalise the coords?
+        ratios = column_coords / self.column_dimension
+        input_coords = ratios * self.input_dimension
+        input_coords += 0.5 * self.input_dimension / self.column_dimension
+        inputs_coords = input_coords.astype(int)
+        input_index = np.ravel_multi_index(
+            inputs_coords, self.input_dimension, mode="clip"
+        )
+
+        return input_index
+
+    def get_neighborhood(self, center_index: int) -> np.ndarray:
+        """
+        returns the indices of the neighborhood of a given center index
+        """
+
+        center_coords = np.array(np.unravel_index(center_index, self.input_dimension))
+        intervals = []
+        for idx, dimension in enumerate(self.input_dimension):
+            left = max(0, center_coords[idx] - self.potential_pool_radius)
+            right = min(dimension, center_coords[idx] + self.potential_pool_radius)
+            intervals.append(np.arange(left, right + 1))
+
+        neighborhood = np.array(np.meshgrid(*intervals)).T.reshape(
+            -1, len(self.input_dimension)
+        )
+
+        return neighborhood
+
+    def get_potential_pool(self, column_idx: int) -> np.ndarray:
+        center_index = self.get_potential_pool_center(column_idx)
+        neighborhood = self.get_neighborhood(center_index)
+
+        indices = np.ravel_multi_index(
+            neighborhood.T, self.input_dimension, mode="clip"
+        )
+
+        return indices
+
     def _init_potential_pools(self):
         for column in range(self.number_of_columns):
-            random_indices = np.random.choice(
-                self.number_of_inputs,
-                size=self.synapse_connection_size,
+            potential_pool = self.get_potential_pool(column)
+            no_connections = int(len(potential_pool) * self.connection_sparsity + 0.5)
+
+            connections = np.random.choice(
+                potential_pool,
+                size=no_connections,
                 replace=False,
             )
-            self.potential_pools[column, random_indices] = True
+            self.potential_pools[column, connections] = True
 
     def _init_permanences(self):
         self.permanences = np.random.uniform(
@@ -193,10 +248,9 @@ class SpatialPooler:
 
         :return: active columns with shape <number_of_columns>
         """
-
         assert (
-            input_vector.shape == self.input_dimension
-        ), f"Input vector has wrong shape. Expected {self.input_dimension}, got {input_vector.shape}"
+            np.array(input_vector.shape) == self.input_dimension
+        ).all(), f"Input vector has wrong shape. Expected {self.input_dimension}, got {input_vector.shape}"
 
         overlap = self.calculate_overlap(input_vector)
 
