@@ -1,5 +1,5 @@
 import pickle
-from typing import Tuple
+from typing import Any, Tuple
 
 import numpy as np
 
@@ -9,7 +9,6 @@ class SpatialPooler:
         self,
         input_dimension: Tuple[int],
         column_dimension: Tuple[int],
-        # TODO rename connection sparsity
         connection_sparsity: float,
         permanence_threshold: float,
         stimulus_threshold: float,
@@ -64,7 +63,10 @@ class SpatialPooler:
         this function returns the index of the center of the potential pool
         given a column index. It distributes the potential pool evenly over the
         input space.
-        TODO: find out how this exactly works and find better implementation
+
+        :param column_idx: index of the column
+
+        :return: index of the center of the potential pool
         """
 
         column_coords = np.array(np.unravel_index(column_idx, self.column_dimension))
@@ -74,15 +76,21 @@ class SpatialPooler:
         input_coords = ratios * self.input_dimension
         input_coords += 0.5 * self.input_dimension / self.column_dimension
         inputs_coords = input_coords.astype(int)
-        input_index = np.ravel_multi_index(
+
+        center_index = np.ravel_multi_index(  # type: ignore
             inputs_coords, self.input_dimension, mode="clip"
         )
 
-        return input_index
+        return center_index
 
     def get_neighborhood(self, center_index: int) -> np.ndarray:
         """
-        returns the indices of the neighborhood of a given center index
+        Returns the indices of the neighborhood of a given center index by
+        taking all indices within a radius of <self.potential_pool_radius>
+
+        :param center_index: index of the center
+
+        :return: indices of the neighborhood
         """
 
         center_coords = np.array(np.unravel_index(center_index, self.input_dimension))
@@ -99,33 +107,51 @@ class SpatialPooler:
         return neighborhood
 
     def get_potential_pool(self, column_idx: int) -> np.ndarray:
+        """
+        Returns the indices of the potential pool of a given column by
+        calculating the center of the potential pool given a column index
+        and then calculating the neighborhood of that center.
+
+        :param column_idx: index of the column
+
+        :return: indices of the potential pool
+        """
         center_index = self.get_potential_pool_center(column_idx)
         neighborhood = self.get_neighborhood(center_index)
 
-        indices = np.ravel_multi_index(
+        indices = np.ravel_multi_index(  # type: ignore
             neighborhood.T, self.input_dimension, mode="clip"
         )
 
         return indices
 
     def _init_potential_pools(self):
-        for column in range(self.number_of_columns):
-            potential_pool = self.get_potential_pool(column)
-            no_connections = int(len(potential_pool) * self.connection_sparsity + 0.5)
+        """
+        Initializes the potential pools of all columns.
+        A potential pool is a set of input bits that a column can connect to.
+        """
 
+        for column in range(self.number_of_columns):
+            potential_pool_indices = self.get_potential_pool(column)
+            no_connections = int(
+                len(potential_pool_indices) * self.connection_sparsity + 0.5
+            )
+
+            # get <no_connections> random indices from potential pool indices
             connections = np.random.choice(
-                potential_pool,
+                potential_pool_indices,
                 size=no_connections,
                 replace=False,
             )
             self.potential_pools[column, connections] = True
 
     def _init_permanences(self):
-        self.permanences = np.random.uniform(
-            0, 1, size=(self.number_of_columns, self.number_of_inputs)
-        )
+        for column in range(self.number_of_columns):
+            potential_pool_size = np.sum(self.potential_pools[column, :])
 
-        self.permanences[self.potential_pools == False] = 0
+            permanences = np.random.uniform(0, 1, potential_pool_size)
+
+            self.permanences[column, self.potential_pools[column, :]] = permanences
 
     def _init_connected_synapses(self):
         self.connected_synapses = self.permanences >= self.permanence_threshold
@@ -136,6 +162,15 @@ class SpatialPooler:
         self._init_connected_synapses()
 
     def calculate_overlap(self, input_vector: np.ndarray) -> np.ndarray:
+        """
+        Calculates the overlap of the input vector with the columns.
+        The overlap is defined as the number of on bits (1's) in the input vector
+        that overlap with the connected synapses of a column.
+
+        :param input_vector: the input vector
+
+        :return: the overlap of the input vector with the columns shape: (number_of_columns,)
+        """
         overlap = np.zeros(self.number_of_columns, dtype=float)
         input_flattened = input_vector.flatten()
 
@@ -153,12 +188,33 @@ class SpatialPooler:
         return boosted_overlap
 
     def get_winning_columns(self, overlap: np.ndarray) -> np.ndarray:
+        """
+        Selects <number_of_active_columns> columns with the highest overlap
+        which are above the stimulus threshold and returns their indices.
+
+        :param overlap: the overlap of the input vector with the columns shape: (number_of_columns,)
+
+        :return: the indices of the winning columns
+        """
+
+        # sort indices by overlap count in descending order and
+        # select the first <number_of_active_columns> indices
         top_columns = np.argsort(overlap)[::-1][: self.number_of_active_columns]
+
+        # select only the indices that are above the stimulus threshold
         top_columns = top_columns[overlap[top_columns] >= self.stimulus_threshold]
 
         return top_columns
 
     def top_columns_to_sdr(self, top_columns: np.ndarray) -> np.ndarray:
+        """
+        Converts the indices of the winning columns into an SDR.
+
+        :param top_columns: the indices of the winning columns
+
+        :return: SDR with shape (number_of_columns,)
+        """
+
         sdr = np.zeros(self.number_of_columns, dtype=bool)
         sdr[top_columns] = True
         return sdr
@@ -166,31 +222,24 @@ class SpatialPooler:
     def update_permanences(self, input_vector: np.ndarray, top_columns: np.ndarray):
         flattened_input = input_vector.flatten()
         for column_idx in top_columns:
-            for synapse_idx, connected in enumerate(
-                self.potential_pools[column_idx, :]
-            ):
-                if not connected:
-                    continue
+            # get the indices of the connected synapses
+            connected = self.potential_pools[column_idx, :]
 
-                if flattened_input[synapse_idx]:
-                    self.permanences[
-                        column_idx, synapse_idx
-                    ] += self.permanence_increment
-                else:
-                    self.permanences[
-                        column_idx, synapse_idx
-                    ] -= self.permanence_decrement
+            # update the permanences of the connected synapses by
+            # incrementing permanences of active synapses
+            # and decrementing the permanences of the inactive synapses
+            if flattened_input[connected].any():
+                self.permanences[column_idx, connected] += self.permanence_increment
+            else:
+                self.permanences[column_idx, connected] -= self.permanence_decrement
 
-                if self.permanences[column_idx, synapse_idx] < 0:
-                    self.permanences[column_idx, synapse_idx] = 0
+            # clip permanences to [0, 1]
+            self.permanences[column_idx, connected > 1] = 1
+            self.permanences[column_idx, connected < 0] = 0
 
-                if self.permanences[column_idx, synapse_idx] > 1:
-                    self.permanences[column_idx, synapse_idx] = 1
-
-                self.connected_synapses[column_idx, synapse_idx] = (
-                    self.permanences[column_idx, synapse_idx]
-                    >= self.permanence_threshold
-                )
+            self.connected_synapses[column_idx, connected] = (
+                self.permanences[column_idx, connected] >= self.permanence_threshold
+            )
 
     def calculate_moving_average(
         self, duty_cycles: np.ndarray, period: int, new_value: np.ndarray
@@ -255,16 +304,16 @@ class SpatialPooler:
 
         overlap = self.calculate_overlap(input_vector)
 
-        if learn:
-            overlap = self.boost_columns(overlap)
+        # if learn:
+        # overlap = self.boost_columns(overlap)
 
         winning_columns = self.get_winning_columns(overlap)
 
         if learn:
             self.update_permanences(input_vector, winning_columns)
-            self.update_duty_cycles(overlap, winning_columns)
+            # self.update_duty_cycles(overlap, winning_columns)
             # TODO bump weak columns
-            self.update_boost_factors()
+            # self.update_boost_factors()
 
         self.iteration += 1
 
