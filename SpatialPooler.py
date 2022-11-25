@@ -34,6 +34,7 @@ class SpatialPooler:
         self.permanence_increment = permanence_increment
         self.permanence_decrement = permanence_decrement
 
+        self.column_sparsity = column_sparsity
         self.number_of_active_columns = int(self.number_of_columns * column_sparsity)
 
         self.potential_pools = np.zeros(
