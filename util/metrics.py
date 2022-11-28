@@ -71,7 +71,6 @@ def sp_stability(sp: SpatialPooler, x: np.ndarray, y: np.ndarray, random: bool):
             # calculate similiraty and convert to %
             mean_similiraty = get_mean_similiraty(reference_vectors, test_input)
             percent = similiraty_to_percent(
-                # TODO sparsity and column dim should be inferred from sp
                 mean_similiraty,
                 sp.column_sparsity,
                 int(sp.number_of_columns),

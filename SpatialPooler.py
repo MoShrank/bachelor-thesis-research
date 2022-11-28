@@ -16,6 +16,7 @@ class SpatialPooler:
         permanence_decrement: float,
         column_sparsity: float,
         potential_pool_radius: int,
+        boost_strength: float,
         seed: int = 42,
     ):
         self.input_dimension = np.array(input_dimension)
@@ -48,11 +49,12 @@ class SpatialPooler:
             (self.number_of_columns, self.number_of_inputs), dtype=bool
         )
 
+        self.boost_strength = boost_strength
         self.boost_factors = np.ones(self.number_of_columns, dtype=float)
         self.overlap_duty_cycles = np.zeros(self.number_of_columns, dtype=float)
         self.active_duty_cycle = np.zeros(self.number_of_columns, dtype=float)
-        self.duty_cycle_period = 1000  # TODO find out why init with 1000
-        self.iteration = 0
+        self.duty_cycle_period = 1000
+        self.iteration = 1
 
         np.random.seed(seed)
 
@@ -125,6 +127,9 @@ class SpatialPooler:
 
         return indices
 
+    def set_connected_synapses(self, permanences: np.ndarray):
+        self.connected_synapses = permanences >= self.permanence_threshold
+
     def _init_potential_pools(self):
         """
         Initializes the potential pools of all columns.
@@ -154,7 +159,7 @@ class SpatialPooler:
             self.permanences[column, self.potential_pools[column, :]] = permanences
 
     def _init_connected_synapses(self):
-        self.connected_synapses = self.permanences >= self.permanence_threshold
+        self.set_connected_synapses(self.permanences)
 
     def _initialize(self):
         self._init_potential_pools()
@@ -178,7 +183,7 @@ class SpatialPooler:
             overlap[column] = np.sum(
                 np.logical_and(
                     input_flattened, self.connected_synapses[column, :]
-                ).astype(float)
+                ).astype(int)
             )
 
         return overlap
@@ -202,9 +207,9 @@ class SpatialPooler:
         top_columns = np.argsort(overlap)[::-1][: self.number_of_active_columns]
 
         # select only the indices that are above the stimulus threshold
-        top_columns = top_columns[overlap[top_columns] >= self.stimulus_threshold]
+        winning_columns = top_columns[overlap[top_columns] >= self.stimulus_threshold]
 
-        return top_columns
+        return winning_columns
 
     def top_columns_to_sdr(self, top_columns: np.ndarray) -> np.ndarray:
         """
@@ -221,25 +226,28 @@ class SpatialPooler:
 
     def update_permanences(self, input_vector: np.ndarray, top_columns: np.ndarray):
         flattened_input = input_vector.flatten()
+        flipped_flattened_input = np.logical_not(flattened_input)
+
         for column_idx in top_columns:
-            # get the indices of the connected synapses
-            connected = self.potential_pools[column_idx, :]
-
-            # update the permanences of the connected synapses by
-            # incrementing permanences of active synapses
-            # and decrementing the permanences of the inactive synapses
-            if flattened_input[connected].any():
-                self.permanences[column_idx, connected] += self.permanence_increment
-            else:
-                self.permanences[column_idx, connected] -= self.permanence_decrement
-
-            # clip permanences to [0, 1]
-            self.permanences[column_idx, connected > 1] = 1
-            self.permanences[column_idx, connected < 0] = 0
-
-            self.connected_synapses[column_idx, connected] = (
-                self.permanences[column_idx, connected] >= self.permanence_threshold
+            active = np.logical_and(
+                flattened_input, self.potential_pools[column_idx, :]
             )
+
+            inactive = np.logical_and(
+                flipped_flattened_input, self.potential_pools[column_idx, :]
+            )
+
+            # increase active synapses
+            self.permanences[column_idx, active == True] += self.permanence_increment
+
+            # decrease inactive synapses
+            self.permanences[column_idx, inactive == True] -= self.permanence_decrement
+
+            # clip permanences to [0, 1] -> faster than np.clip
+            self.permanences[column_idx, active > 1] = 1
+            self.permanences[column_idx, inactive < 0] = 0
+
+        self.set_connected_synapses(self.permanences)
 
     def calculate_moving_average(
         self, duty_cycles: np.ndarray, period: int, new_value: np.ndarray
@@ -262,10 +270,10 @@ class SpatialPooler:
             period = self.iteration
 
         self.overlap_duty_cycles = self.calculate_moving_average(
-            self.overlap_duty_cycles, self.duty_cycle_period, overlap
+            self.overlap_duty_cycles, period, overlap
         )
         self.active_duty_cycle = self.calculate_moving_average(
-            self.active_duty_cycle, self.duty_cycle_period, active
+            self.active_duty_cycle, period, active
         )
 
     def exp_boost_function(
@@ -274,9 +282,8 @@ class SpatialPooler:
         return np.exp((target_density - duty_cycle) * boost_strength)
 
     def update_boost_factors(self):
-        target_density = self.number_of_active_columns / self.number_of_columns
         self.boost_factors = self.exp_boost_function(
-            self.boost_factors, self.active_duty_cycle, target_density
+            self.boost_strength, self.active_duty_cycle, self.column_sparsity
         )
 
     def save_state(self, path: str):
@@ -304,16 +311,16 @@ class SpatialPooler:
 
         overlap = self.calculate_overlap(input_vector)
 
-        # if learn:
-        # overlap = self.boost_columns(overlap)
+        if learn:
+            overlap = self.boost_columns(overlap)
 
         winning_columns = self.get_winning_columns(overlap)
 
         if learn:
             self.update_permanences(input_vector, winning_columns)
-            # self.update_duty_cycles(overlap, winning_columns)
+            self.update_duty_cycles(overlap, winning_columns)
             # TODO bump weak columns
-            # self.update_boost_factors()
+            self.update_boost_factors()
 
         self.iteration += 1
 
