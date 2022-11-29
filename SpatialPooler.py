@@ -118,12 +118,17 @@ class SpatialPooler:
 
         :return: indices of the potential pool
         """
-        center_index = self.get_potential_pool_center(column_idx)
-        neighborhood = self.get_neighborhood(center_index)
 
-        indices = np.ravel_multi_index(  # type: ignore
-            neighborhood.T, self.input_dimension, mode="clip"
-        )
+        if self.potential_pool_radius == 0:
+            indices = np.arange(self.number_of_inputs)
+
+        else:
+            center_index = self.get_potential_pool_center(column_idx)
+            neighborhood = self.get_neighborhood(center_index)
+
+            indices = np.ravel_multi_index(  # type: ignore
+                neighborhood.T, self.input_dimension, mode="clip"
+            )
 
         return indices
 
