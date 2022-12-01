@@ -32,9 +32,7 @@ def calc_noise_robustness(sp: SpatialPooler, inputs: np.ndarray) -> int:
     for idx, input, sdr in tqdm(zip(range(inputs.shape[0]), inputs, sdrs)):
         integrant = lambda x: func(x, input, sdr)
 
-        integral, err = quad(integrant, 0, 1)
-        print(integral)
-        print(err)
+        integral, _ = quad(integrant, 0, 1)
         integrals[idx] = integral
 
     mean = np.mean(integrals)
