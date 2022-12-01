@@ -1,8 +1,44 @@
 import numpy as np
+from scipy.integrate import quad
 from tqdm import tqdm
 
 from SpatialPooler import SpatialPooler
-from util.data import get_sp_sdr_test_set
+from util.data import add_noise, get_sp_sdr_test_set
+
+
+def calc_noise_robustness(sp: SpatialPooler, inputs: np.ndarray) -> int:
+    sdrs = np.zeros((inputs.shape[0], sp.number_of_columns), dtype=int)
+
+    for idx, input_vector in enumerate(inputs):
+        winning_columns = sp.compute(input_vector, learn=False)
+        sdr = sp.top_columns_to_sdr(winning_columns)
+
+        sdrs[idx, :] = sdr
+
+    integrals = np.zeros(inputs.shape[0], dtype=float)
+
+    def func(x, input, sdr):
+        no_on_bits = np.sum(input)
+        noisy_input = add_noise(input, x)
+        noisy_winning_columns = sp.compute(noisy_input, learn=False)
+        noisy_sdr = sp.top_columns_to_sdr(noisy_winning_columns)
+
+        overlap = calculate_overlap(sdr, noisy_sdr)
+
+        shared_bits = overlap / no_on_bits
+
+        return shared_bits
+
+    for idx, input, sdr in tqdm(zip(range(inputs.shape[0]), inputs, sdrs)):
+        integrant = lambda x: func(x, input, sdr)
+
+        integral, err = quad(integrant, 0, 1)
+        print(integral)
+        print(err)
+        integrals[idx] = integral
+
+    mean = np.mean(integrals)
+    return mean
 
 
 def calculate_overlap(input_one: np.ndarray, input_two: np.ndarray) -> np.ndarray:

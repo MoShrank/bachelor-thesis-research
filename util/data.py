@@ -1,13 +1,29 @@
+from typing import List, Tuple
+
 import numpy as np
+import tensorflow as tf
 
 from SpatialPooler import SpatialPooler
 
 
-def encode_img(x: np.ndarray) -> np.ndarray:
-    encoded_x = np.copy(x)
+def load_mnist() -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
 
-    encoded_x[encoded_x > 0] = 1
-    return encoded_x
+    return (x_train, y_train), (x_test, y_test)
+
+
+def encode_data(*data: np.ndarray) -> Tuple[np.ndarray, ...] | np.ndarray:
+    encoded_data: List[np.ndarray] = []
+
+    for d in data:
+        encoded = np.copy(d)
+        encoded[encoded > 0] = 1
+        encoded_data.append(encoded)
+
+    if len(encoded_data) == 1:
+        return encoded_data[0]
+    else:
+        return tuple(encoded_data)
 
 
 def sample_class(
@@ -45,7 +61,7 @@ def get_sp_sdr_test_set(
     no_samples = 6
 
     samples = sample_class(x, y, class_value, no_samples, random)
-    encoded_samples = encode_img(samples)
+    encoded_samples = encode_data(samples)
 
     for idx, sample in enumerate(encoded_samples):
         active_columns = sp.compute(sample, learn=False)
@@ -53,3 +69,30 @@ def get_sp_sdr_test_set(
         sdrs[idx] = sdr
 
     return sdrs[:5], sdrs[5]
+
+
+def add_noise(img: np.ndarray, k: float) -> np.ndarray:
+    """
+    Randomly flips k percent of on bits in an image to off and vice versa.
+    """
+
+    assert 1 >= k > 0, "k must be in range (0, 1]"
+
+    flipped_img = np.copy(img.flatten())
+    no_on_bits = (flipped_img == 1).sum()
+
+    no_flip_bits = int(no_on_bits * k)
+
+    # get indices of on and off bits
+    on_indices = np.where(flipped_img == 1)[0]
+    off_indices = np.where(flipped_img == 0)[0]
+
+    # get indices of bits to flip
+    bit_indices_flip_off = np.random.choice(on_indices, no_flip_bits, replace=False)
+    bit_indices_flip_on = np.random.choice(off_indices, no_flip_bits, replace=False)
+
+    # flip bits
+    flipped_img[bit_indices_flip_off] = 0
+    flipped_img[bit_indices_flip_on] = 1
+
+    return flipped_img.reshape(img.shape)
