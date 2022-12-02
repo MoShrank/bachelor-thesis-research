@@ -119,9 +119,10 @@ class SpatialPooler:
         :return: indices of the potential pool
         """
 
-        if self.potential_pool_radius == 0:
-            indices = np.arange(self.number_of_inputs)
+        # check if potential_pool_radius is as large to cover whole area
 
+        if ((self.potential_pool_radius * 2) >= self.input_dimension).all():
+            indices = np.arange(self.number_of_inputs)
         else:
             center_index = self.get_potential_pool_center(column_idx)
             neighborhood = self.get_neighborhood(center_index)
