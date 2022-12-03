@@ -1,9 +1,44 @@
+from itertools import product
+
 import numpy as np
 from scipy.integrate import quad
 from tqdm import tqdm
 
-from SpatialPooler import SpatialPooler
-from util.data import add_noise, get_sp_sdr_test_set
+from algorithms import SpatialPooler
+from util.data import add_noise, get_sdrs
+
+
+def calculate_entropy(sp: SpatialPooler, x: np.ndarray) -> float:
+    # 1.
+    # activation frequence for each minicolumn
+    # by summing up activity for each input per column
+
+    # 2.
+    # binary entropy function on column activation frequency
+    # where if activation frequency is 0 or 1, entropy is 0
+
+    # 3.
+    # sum up entropy for each column and calculate mean
+
+    column_activity = np.zeros((x.shape[0], sp.number_of_columns), dtype="int32")
+
+    for idx, input in enumerate(tqdm(x)):
+        winning_columns = sp.compute(input, learn=False)
+        column_activity[idx, winning_columns] = 1
+
+    column_activity_frequency = np.sum(column_activity, axis=0) / x.shape[0]
+
+    entropy = np.sum(
+        [
+            -p * np.log2(p) - (1 - p) * np.log2(1 - p)
+            for p in column_activity_frequency
+            if p != 0 and p != 1
+        ]
+    )
+
+    mean = entropy / sp.number_of_columns
+
+    return mean
 
 
 def calc_noise_robustness(sp: SpatialPooler, inputs: np.ndarray) -> int:
@@ -41,12 +76,23 @@ def calc_noise_robustness(sp: SpatialPooler, inputs: np.ndarray) -> int:
 
 def calculate_overlap(input_one: np.ndarray, input_two: np.ndarray) -> np.ndarray:
     """
-    calculate overlap of bits between two vectors
+    Calculate overlap of bits between two vectors. The overlap is defined as
+    the number of overlapping on bits.
     """
     overlap = np.sum(
         np.logical_and(input_one.astype(bool), input_two.astype(bool)).astype(int)
     )
     return overlap
+
+
+def get_stability(input_one: np.ndarray, input_two: np.ndarray) -> float:
+    """
+    Calculate stability of two vectors. The stability is defined as:
+    stability = L0_norm(overlap(input_one, input_two)) / L0_norm(input_one)
+    """
+    overlap = calculate_overlap(input_one, input_two)
+    stability = overlap / np.sum(input_one)
+    return stability
 
 
 def get_similiraty(
@@ -87,7 +133,10 @@ def similiraty_to_percent(
     return percent
 
 
-def sp_stability(sp: SpatialPooler, x: np.ndarray, y: np.ndarray, random: bool):
+def get_sp_stability(sp: SpatialPooler, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """
+    Creates a 2D array of the mean similiraty of each class to all other classes.
+    """
     classes = np.unique(y)
 
     no_classes = classes.shape[0]
@@ -95,22 +144,15 @@ def sp_stability(sp: SpatialPooler, x: np.ndarray, y: np.ndarray, random: bool):
     # create 2D matrix for measuring stability for each class against each other class
     results = np.zeros((no_classes, no_classes), dtype=float)
 
-    for ref_idx, class_value in tqdm(enumerate(classes)):
-        reference_vectors, _ = get_sp_sdr_test_set(sp, x, y, class_value, random)
+    class_data = {key: get_sdrs(sp, x[y == key][:10]) for key in classes}
+    for ref_class_val, ref_class_sdrs in tqdm(class_data.items()):
+        for class_val, ref_call_sdrs in class_data.items():
+            combinations = product(ref_class_sdrs, ref_call_sdrs)
 
-        for test_idx, test_class_value in enumerate(classes):
-            # get reference vectors
-            _, test_input = get_sp_sdr_test_set(sp, x, y, test_class_value, random)
-
-            # calculate similiraty and convert to %
-            mean_similiraty = get_mean_similiraty(reference_vectors, test_input)
-            percent = similiraty_to_percent(
-                mean_similiraty,
-                sp.column_sparsity,
-                int(sp.number_of_columns),
-            )
-
-            # store result
-            results[ref_idx, test_idx] = percent
-
+            stabilities = []
+            for combination in combinations:
+                stability = get_stability(combination[0], combination[1])
+                stabilities.append(stability)
+            mean = np.mean(stabilities)
+            results[ref_class_val, class_val] = mean
     return results

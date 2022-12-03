@@ -1,9 +1,9 @@
-from typing import List, Tuple
+from typing import List, Tuple, cast
 
 import numpy as np
 import tensorflow as tf
 
-from SpatialPooler import SpatialPooler
+from algorithms import SpatialPooler
 
 
 def load_mnist() -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
@@ -50,6 +50,17 @@ def sample_class(
     return samples
 
 
+def get_sdrs(sp: SpatialPooler, x: np.ndarray) -> np.ndarray:
+    sdrs = np.zeros((x.shape[0], sp.number_of_columns), dtype=int)
+
+    for idx, sample in enumerate(x):
+        active_columns = sp.compute(sample, learn=False)
+        sdr = sp.top_columns_to_sdr(active_columns)
+        sdrs[idx] = sdr
+
+    return sdrs
+
+
 def get_sp_sdr_test_set(
     sp: SpatialPooler, x: np.ndarray, y: np.ndarray, class_value: int, random: bool
 ):
@@ -62,11 +73,9 @@ def get_sp_sdr_test_set(
 
     samples = sample_class(x, y, class_value, no_samples, random)
     encoded_samples = encode_data(samples)
+    encoded_samples = cast(np.ndarray, encoded_samples)
 
-    for idx, sample in enumerate(encoded_samples):
-        active_columns = sp.compute(sample, learn=False)
-        sdr = sp.top_columns_to_sdr(active_columns)
-        sdrs[idx] = sdr
+    sdrs = get_sdrs(sp, encoded_samples)
 
     return sdrs[:5], sdrs[5]
 
