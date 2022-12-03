@@ -1,0 +1,20 @@
+{
+    "input_dimension": [
+        28,
+        28
+    ],
+    "column_dimension": [
+        45,
+        45
+    ],
+    "connection_sparsity": 0.7,
+    "permanence_threshold": 0.5,
+    "stimulus_threshold": 10,
+    "permanence_increment": 0.1,
+    "permanence_decrement": 0.02,
+    "column_sparsity": 0.02,
+    "potential_pool_radius": 8,
+    "boost_strength": 25,
+    "epochs": 5,
+    "epoch": 4
+}
