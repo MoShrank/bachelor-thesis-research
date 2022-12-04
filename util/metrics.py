@@ -1,4 +1,5 @@
 from itertools import product
+from typing import Tuple
 
 import numpy as np
 from scipy.integrate import quad
@@ -8,26 +9,28 @@ from algorithms import SpatialPooler
 from util.data import add_noise, get_sdrs
 
 
-def calculate_entropy(sp: SpatialPooler, x: np.ndarray) -> float:
-    # 1.
-    # activation frequence for each minicolumn
-    # by summing up activity for each input per column
+def calculate_sparsity(sp: SpatialPooler, x: np.ndarray) -> float:
+    """
+    Calculate sparsity of a set of inputs
+    """
+    sdrs = get_sdrs(sp, x)
+    sparsity = np.mean(np.sum(sdrs, axis=1) / sp.number_of_columns)
+    return sparsity
 
-    # 2.
-    # binary entropy function on column activation frequency
-    # where if activation frequency is 0 or 1, entropy is 0
 
-    # 3.
-    # sum up entropy for each column and calculate mean
+def calculate_entropy(sp: SpatialPooler, x: np.ndarray) -> Tuple[float, np.ndarray]:
+    """
+    Calculate entropy of columns for a set of inputs
+    """
 
+    # get activation frequence per column over all inputs
     column_activity = np.zeros((x.shape[0], sp.number_of_columns), dtype="int32")
-
     for idx, input in enumerate(tqdm(x)):
         winning_columns = sp.compute(input, learn=False)
         column_activity[idx, winning_columns] = 1
-
     column_activity_frequency = np.sum(column_activity, axis=0) / x.shape[0]
 
+    # calculate entropy for each column
     entropy = np.sum(
         [
             -p * np.log2(p) - (1 - p) * np.log2(1 - p)
@@ -36,9 +39,10 @@ def calculate_entropy(sp: SpatialPooler, x: np.ndarray) -> float:
         ]
     )
 
-    mean = entropy / sp.number_of_columns
+    # calculate mean entropy
+    mean_entropy = entropy / sp.number_of_columns
 
-    return mean
+    return mean_entropy, column_activity_frequency
 
 
 def calc_noise_robustness(sp: SpatialPooler, inputs: np.ndarray) -> int:

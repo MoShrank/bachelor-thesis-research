@@ -85,7 +85,10 @@ def add_noise(img: np.ndarray, k: float) -> np.ndarray:
     Randomly flips k percent of on bits in an image to off and vice versa.
     """
 
-    assert 1 >= k > 0, "k must be in range (0, 1]"
+    assert 1 >= k >= 0, "k must be in range [0, 1]"
+
+    if k == 0:
+        return img
 
     flipped_img = np.copy(img.flatten())
     no_on_bits = (flipped_img == 1).sum()
