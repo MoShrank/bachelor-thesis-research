@@ -1,3 +1,5 @@
+from typing import List
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -30,4 +32,16 @@ def plot_images(arr: np.ndarray):
         axes[idx].imshow(arr[idx, :, :])
         axes[idx].axis("off")
 
+    plt.show()
+
+
+def scatter_plot(xs: List, ys: List):
+    # draw quadartic scatter plot with xlim and ylim and grid with grid lines per 1 unit
+    plt.figure(figsize=(7, 7))
+    plt.scatter(xs, ys)
+    plt.xlim(0, 28)
+    plt.ylim(0, 28)
+    plt.grid(b=True, which="major", color="#666666", linestyle="-")
+    plt.minorticks_on()
+    plt.grid(b=True, which="minor", color="#999999", linestyle="-", alpha=0.2)
     plt.show()
