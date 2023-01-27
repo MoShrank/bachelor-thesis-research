@@ -15,6 +15,22 @@ def plot_image(arr: np.ndarray):
     plt.show()
 
 
+def plot_image_with_saccade(arr: np.ndarray, sac: np.ndarray):
+    """
+    plot image with saccade
+
+    :param arr: image
+    :param sac: x, y coordinates of saccade
+    """
+    assert arr.ndim == 2, f"input must be 2d array. Got {arr.ndim}d array"
+    # assert sac.ndim == 2, f"saccade must be 2d array. Got {sac.ndim}d array"
+
+    plt.imshow(arr)
+    plt.scatter(sac[0], sac[1], c="red")
+    plt.axis("off")
+    plt.show()
+
+
 def plot_images(arr: np.ndarray):
     """
     plot images
