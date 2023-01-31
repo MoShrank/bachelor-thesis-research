@@ -24,7 +24,6 @@ class SaccadeGenerator(Sequence):
         self.y = y.copy()
         self.batch_size = batch_size
 
-    """
     def __iter__(self):
         return self
 
@@ -37,7 +36,6 @@ class SaccadeGenerator(Sequence):
             return saccades
 
         raise StopIteration
-    """
 
     def __len__(self) -> int:
         return self.x.shape[0] // self.batch_size
