@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 from tensorflow.keras.utils import Sequence
 
-from util.math import get_random_pool_indices
+from util.helper import get_random_pool_indices
 
 
 class SaccadeGenerator(Sequence):
