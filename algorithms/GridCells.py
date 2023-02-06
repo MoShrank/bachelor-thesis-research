@@ -127,16 +127,20 @@ class GridCells:
     def reset_phases(self):
         self.active_phases = []
 
-    def learn_object(self, object: List[Dict]):
+    def learn_object(self, obj: List[Dict]):
         """
         :param: obj: [{location: <displacement vector>, feature: <feature_vector>}, ...]
         """
 
         self.active_phases.append(self.get_random_phases())
 
-        for saccade in object:
-            location = saccade["location"]
-            feature = saccade["feature"]
+        for saccade in obj:
+            location: np.ndarray = saccade["location"]
+            feature: np.ndarray = saccade["feature"].flatten()
+
+            assert feature.shape == (
+                self.no_columns,
+            ), f"Feature vector should be of shape ({self.no_columns},). Received {feature.shape}"
 
             active_phases = self.active_phases[-1]
             if location:
@@ -155,7 +159,7 @@ class GridCells:
             predicted_cells[predicted_cells < self.location_layer_threshold] = 0
 
             # get active columns from input feature
-            active_columns = np.argwhere(feature)
+            active_columns = np.argwhere(feature).flatten()
 
             # set predicted cells in inactive columns to zero
             predicted_cells[~active_columns] = 0
@@ -171,7 +175,11 @@ class GridCells:
             )  # shape: (<no_columns>,)
 
             column_indices_to_choose_cell = np.argwhere(
-                active_cells[active_columns & (no_pred_cells_per_column == 0)]
+                no_pred_cells_per_column == 0
+            ).flatten()
+
+            column_indices_to_choose_cell = np.intersect1d(
+                column_indices_to_choose_cell, active_columns
             )
 
             no_columns_to_choose_cell = column_indices_to_choose_cell.shape[
@@ -179,7 +187,7 @@ class GridCells:
             ]  # number of columns to chose random cell for
 
             active_random_cells = np.random.randint(
-                0, self.no_columns + 1, size=(no_columns_to_choose_cell)
+                0, self.no_cells_per_column, size=(no_columns_to_choose_cell)
             )
 
             active_cells[column_indices_to_choose_cell, active_random_cells] = 1
@@ -191,25 +199,29 @@ class GridCells:
             active_cells_indices_separated = np.split(
                 active_cells_indices_sen_layer, 2, axis=1
             )
+
             column_indices = active_cells_indices_separated[0].flatten()
             cell_indices = active_cells_indices_separated[1].flatten()
 
-            # get indices of active grid cells
-            active_grid_cell_indices = np.argwhere(
+            # get all active cell indices in shape (no_of_active_cells, 2) which
+            # were activate by column_indices and cell_indices in dendritic segments
+            active_grid_cell_indices_sense_layer = np.argwhere(
                 self.dendritic_segments[:, :, column_indices, cell_indices]
             )
 
+            # TODO needs to be fixed because it has <..., 3> shape should be <..., 2> => just index it: [:2]
+            print("shape", active_grid_cell_indices_sense_layer.shape)
+
             # properly index active_grid_cell_indices by adding module dimension
-            active_grid_cell_indices = np.insert(
-                active_grid_cell_indices,
-                1,
-                np.arange(len(active_grid_cell_indices)),
-                axis=1,
-            )
+            module_range = np.arange(len(active_grid_cell_indices))
+            active_grid_cell_indices_full = np.zeros((len(active_grid_cell_indices), 2))
+
+            active_grid_cell_indices_full[:, 0] = module_range
+            active_grid_cell_indices_full[:, 1] = active_grid_cell_indices
 
             # merge active_grid_cell_indices with active_cells_indices_sen_layer into a tuple
             active_grid_cell_indices = np.concatenate(
-                (active_grid_cell_indices, active_cells_indices_sen_layer), axis=1
+                (active_grid_cell_indices, active_grid_cell_indices_sense_layer), axis=1
             )
 
             # split into modules and cells
@@ -225,10 +237,12 @@ class GridCells:
                 cell_indices,
             ] = 1
 
-        phases = self.active_phases.copy()
         self.reset_phases()
 
-        return phases
+        return active_grid_cell_indices
+
+    def active_grid_cells_to_vector(self, active_grid_cells: np.ndarray):
+        pass
 
     def infer(self):
         pass
