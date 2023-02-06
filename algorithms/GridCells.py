@@ -2,6 +2,8 @@ import math
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
+import itertools
+from tqdm import tqdm
 
 
 class GridCells:
@@ -79,7 +81,6 @@ class GridCells:
 
         :return: random phases
         """
-
         active_phases = np.random.random((self.no_modules, 2))
 
         return active_phases
@@ -134,7 +135,7 @@ class GridCells:
 
         self.active_phases.append(self.get_random_phases())
 
-        for saccade in obj:
+        for saccade in tqdm(obj):
             location: np.ndarray = saccade["location"]
             feature: np.ndarray = saccade["feature"].flatten()
 
@@ -207,10 +208,7 @@ class GridCells:
             # were activate by column_indices and cell_indices in dendritic segments
             active_grid_cell_indices_sense_layer = np.argwhere(
                 self.dendritic_segments[:, :, column_indices, cell_indices]
-            )
-
-            # TODO needs to be fixed because it has <..., 3> shape should be <..., 2> => just index it: [:2]
-            print("shape", active_grid_cell_indices_sense_layer.shape)
+            )[:, :2]
 
             # properly index active_grid_cell_indices by adding module dimension
             module_range = np.arange(len(active_grid_cell_indices))
@@ -221,7 +219,8 @@ class GridCells:
 
             # merge active_grid_cell_indices with active_cells_indices_sen_layer into a tuple
             active_grid_cell_indices = np.concatenate(
-                (active_grid_cell_indices, active_grid_cell_indices_sense_layer), axis=1
+                (active_grid_cell_indices_full, active_grid_cell_indices_sense_layer),
+                axis=0,
             )
 
             # split into modules and cells
@@ -229,12 +228,27 @@ class GridCells:
                 active_grid_cell_indices, 2, axis=1
             )
 
+            active_grid_cells = (
+                active_grid_cell_indices_separated[1].flatten().astype(int)
+            )
+            active_cells = cell_indices.astype(int)
+
+            # get combination of grid and active_cells
+            active_grid_cells_active_cells = np.array(
+                list(itertools.product(active_grid_cells, active_cells))
+            )
+
+            # split into grid cells and cells
+            active_grid_cells_active_cells_separated = np.split(
+                active_grid_cells_active_cells, 2, axis=1
+            )
+
             # form dendritic segments
             self.dendritic_segments[
-                active_grid_cell_indices_separated[0].flatten(),
-                active_grid_cell_indices_separated[1].flatten(),
-                column_indices,
-                cell_indices,
+                :,
+                active_grid_cells_active_cells_separated[0].flatten().astype(int),
+                :,
+                active_grid_cells_active_cells_separated[1].flatten().astype(int),
             ] = 1
 
         self.reset_phases()
