@@ -238,6 +238,8 @@ class GridCells:
                 list(itertools.product(active_grid_cells, active_cells))
             )
 
+            print(active_grid_cells_active_cells.shape)
+
             # split into grid cells and cells
             active_grid_cells_active_cells_separated = np.split(
                 active_grid_cells_active_cells, 2, axis=1

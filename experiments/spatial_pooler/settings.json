@@ -1,0 +1,15 @@
+{
+    "configs": [
+        { 
+            "column_dimension": 1000,
+            "connection_sparsity": 0.75,
+            "permanence_threshold": 0.5,
+            "stimulus_threshold": 1,
+            "permanence_increment": 0.1,
+            "permanence_decrement": 0.02,
+            "column_sparsity": 0.02,
+            "potential_pool_radius": 2048,
+            "boost_strength": 50
+        }
+    ]
+}

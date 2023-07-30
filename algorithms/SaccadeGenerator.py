@@ -15,7 +15,6 @@ class SaccadeGenerator(Sequence):
         no_saccades: int = 5,
         batch_size: int = 128,
     ):
-
         self.size = (x[0].shape[0], x[0].shape[1])
         self.saccade_size = saccade_size
         self.x = x.copy()
@@ -38,7 +37,7 @@ class SaccadeGenerator(Sequence):
         raise StopIteration
 
     def __len__(self) -> int:
-        return self.x.shape[0] // self.batch_size
+        return self.x.shape[0]  # self.x.shape[0] // self.batch_size
 
     def __getitem__(self, index: int) -> Tuple:
         batch_x = []
